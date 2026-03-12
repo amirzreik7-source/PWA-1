@@ -314,8 +314,27 @@
                         <option value="3">3 Coats</option>
                     </select>
                 </div>
+                <div class="form-group" style="margin-top:15px;padding-top:15px;border-top:1px solid #e0e0e0;">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                        <input type="checkbox" id="usePrimer" onchange="togglePrimerSection()" style="width:20px;height:20px;">
+                        <span>Use Primer</span>
+                    </label>
+                </div>
+                <div id="primerSection" class="hidden">
+                    <div class="form-group">
+                        <label>Primer Product</label>
+                        <select id="primerProduct"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Primer Coats</label>
+                        <select id="primerCoats">
+                            <option value="1">1 Coat</option>
+                            <option value="2">2 Coats</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            
+
             <button class="btn btn-success btn-large" onclick="saveSurface()">Save Surface</button>
         </div>
 
@@ -1898,7 +1917,17 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                 }
             }
             
-            return { laborCost: labor, materialCost: material, total: labor + material };
+            // Add primer material cost if primer is used
+            let primerMaterial = 0;
+            if (surface.usePrimer && surface.primerCoats > 0) {
+                const primerCoats = surface.primerCoats;
+                const pricePerGallon = currentEstimate.jobType === 'Exterior' ? PRICING.PaintPricePerGallon : PRICING.InteriorPaintPricePerGallon;
+                const coverage = currentEstimate.jobType === 'Exterior' ? 350 : 350; // primer coverage ~350 sqft/gal
+                primerMaterial = (qty / coverage) * pricePerGallon * primerCoats;
+                material += primerMaterial;
+            }
+
+            return { laborCost: labor, materialCost: material, primerMaterialCost: primerMaterial, total: labor + material };
         }
 
         function calculateRoomTotal(room) {
@@ -1974,10 +2003,17 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                     box.style.border = '2px solid #28a745';
                     
                     const cost = calculateSurfaceCost(surface);
+                    const primerInfo = surface.usePrimer ? (() => {
+                        const primerProduct = window.products.find(p => p.id === surface.primerProductId);
+                        const primerName = primerProduct ? primerProduct.name : 'Primer';
+                        return `<p style="margin:2px 0;font-size:10pt;color:#155724;">🛡️ Primer: ${primerName} • ${surface.primerCoats} coat(s)</p>`;
+                    })() : '';
+                    const coatsDisplay = surface.usePrimer ? `${surface.coats}/${surface.primerCoats}` : `${surface.coats}`;
                     box.innerHTML = `
                         <div style="padding-right:35px;">
                             <h4 style="margin:0 0 5px 0;color:#155724;">✓ ${surfaceType}</h4>
-                            <p style="margin:2px 0;font-size:10pt;color:#155724;">${surface.color} • ${surface.sheen} • ${surface.coats} coat(s)</p>
+                            <p style="margin:2px 0;font-size:10pt;color:#155724;">${surface.color} • ${surface.sheen} • ${coatsDisplay} coat(s)</p>
+                            ${primerInfo}
                             <p style="margin:2px 0;font-weight:bold;color:#155724;">$${(cost.total || 0).toFixed(2)}</p>
                         </div>
                     `;
@@ -2117,6 +2153,16 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
             document.getElementById('surfaceQuantityLabel').textContent = 'Quantity (' + unit + ')';
             document.getElementById('surfaceUnit').textContent = unit;
             
+            // Populate primer product dropdown
+            const primerDropdown = document.getElementById('primerProduct');
+            primerDropdown.innerHTML = '<option value="">Select Primer...</option>';
+            window.products.forEach(product => {
+                const option = document.createElement('option');
+                option.value = product.id;
+                option.textContent = product.name;
+                primerDropdown.appendChild(option);
+            });
+
             if (existingSurface) {
                 // Editing existing
                 document.getElementById('surfaceQuantity').value = existingSurface.quantity || '';
@@ -2125,6 +2171,16 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                 document.getElementById('surfaceColor').value = existingSurface.color || '';
                 document.getElementById('surfaceCoats').value = existingSurface.coats || 2;
                 document.getElementById('autoCalcNote').classList.add('hidden');
+                // Restore primer state
+                if (existingSurface.usePrimer) {
+                    document.getElementById('usePrimer').checked = true;
+                    document.getElementById('primerSection').classList.remove('hidden');
+                    document.getElementById('primerProduct').value = existingSurface.primerProductId || '';
+                    document.getElementById('primerCoats').value = existingSurface.primerCoats || 1;
+                } else {
+                    document.getElementById('usePrimer').checked = false;
+                    document.getElementById('primerSection').classList.add('hidden');
+                }
             } else {
                 // New surface
                 if (canAutoCalc) {
@@ -2138,8 +2194,11 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                 document.getElementById('surfaceSheen').value = 'Satin';
                 document.getElementById('surfaceColor').value = '';
                 document.getElementById('surfaceCoats').value = 2;
+                // Reset primer
+                document.getElementById('usePrimer').checked = false;
+                document.getElementById('primerSection').classList.add('hidden');
             }
-            
+
             // Show modal
             showScreen('surfaceConfigModal');
         };
@@ -2328,11 +2387,18 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                     box.style.border = '2px solid #28a745';
                     
                     const cost = calculateSurfaceCost(surface);
+                    const primerInfo2 = surface.usePrimer ? (() => {
+                        const primerProd = window.products.find(p => p.id === surface.primerProductId);
+                        const pName = primerProd ? primerProd.name : 'Primer';
+                        return `<p style="margin:2px 0;font-size:10pt;color:#155724;">🛡️ Primer: ${pName} • ${surface.primerCoats} coat(s)</p>`;
+                    })() : '';
+                    const coatsDisp2 = surface.usePrimer ? `${surface.coats}/${surface.primerCoats}` : `${surface.coats}`;
                     box.innerHTML = `
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-right:35px;">
                             <div style="flex:1;">
                                 <h4 style="margin:0 0 5px 0;color:#155724;">✓ ${surfaceType}</h4>
-                                <p style="margin:2px 0;font-size:10pt;color:#155724;">${surface.color} • ${surface.sheen} • ${surface.coats} coat(s)</p>
+                                <p style="margin:2px 0;font-size:10pt;color:#155724;">${surface.color} • ${surface.sheen} • ${coatsDisp2} coat(s)</p>
+                                ${primerInfo2}
                                 <p style="margin:2px 0;font-weight:bold;color:#155724;">$${(cost.total || 0).toFixed(2)}</p>
                             </div>
                         </div>
@@ -2427,37 +2493,59 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
         };
         
         // Save surface configuration
+        // Toggle primer section visibility
+        window.togglePrimerSection = function() {
+            const checked = document.getElementById('usePrimer').checked;
+            document.getElementById('primerSection').classList.toggle('hidden', !checked);
+        };
+
         window.saveSurface = function() {
             console.log('saveSurface called');
             const surfaceType = window.currentSurfaceType;
-            
+
             const quantity = parseFloat(document.getElementById('surfaceQuantity').value);
             const productId = document.getElementById('surfaceProduct').value;
             const sheen = document.getElementById('surfaceSheen').value;
             const color = document.getElementById('surfaceColor').value;
             const coats = parseInt(document.getElementById('surfaceCoats').value);
-            
+
             if (!quantity || !productId || !sheen || !color || !coats) {
                 alert('Please fill in all fields');
                 return;
             }
-            
+
+            // Primer data
+            const usePrimer = document.getElementById('usePrimer').checked;
+            let primerProductId = '';
+            let primerCoats = 1;
+            if (usePrimer) {
+                primerProductId = document.getElementById('primerProduct').value;
+                primerCoats = parseInt(document.getElementById('primerCoats').value);
+                if (!primerProductId) {
+                    alert('Please select a primer product');
+                    return;
+                }
+            }
+
             // Find or create surface in currentRoom
             let surface = window.currentRoom.surfaces.find(s => s.surfaceType === surfaceType);
             if (!surface) {
                 surface = { surfaceType: surfaceType };
                 window.currentRoom.surfaces.push(surface);
             }
-            
+
             // Update surface data
             surface.quantity = quantity;
             surface.productId = productId;
             surface.sheen = sheen;
             surface.color = color;
             surface.coats = coats;
-            
+            surface.usePrimer = usePrimer;
+            surface.primerProductId = usePrimer ? primerProductId : '';
+            surface.primerCoats = usePrimer ? primerCoats : 0;
+
             console.log('Surface saved:', surface);
-            
+
             // Refresh room detail screen and go back
             displayRoomDetail();
             showScreen('roomDetailScreen');
@@ -2957,12 +3045,21 @@ We're grateful at Northern Star Painting for the chance to submit our proposal f
                     
                     room.surfaces.forEach(surface => {
                         const product = products.find(p => p.id === surface.productId);
+                        const primerCoatsDisplay = surface.usePrimer ? surface.primerCoats : 0;
+                        const coatsDisplay = surface.coats + ' / ' + primerCoatsDisplay;
+                        let productDisplay = product ? product.name : 'Product';
+                        if (surface.usePrimer && surface.primerProductId) {
+                            const primerProduct = products.find(p => p.id === surface.primerProductId);
+                            if (primerProduct) {
+                                productDisplay += '<br><span style="font-size:10px;color:#666;">Primer: ' + primerProduct.name + '</span>';
+                            }
+                        }
                         win.document.write('<tr>');
                         win.document.write('<td style="padding-left:20px">' + (surface.surfaceType || surface.type || 'Surface') + '</td>');
-                        win.document.write('<td>' + (product ? product.name : 'Product') + '</td>');
+                        win.document.write('<td>' + productDisplay + '</td>');
                         win.document.write('<td>' + surface.sheen + '</td>');
                         win.document.write('<td>' + surface.color + '</td>');
-                        win.document.write('<td>' + surface.coats + ' / 0</td>');
+                        win.document.write('<td>' + coatsDisplay + '</td>');
                         win.document.write('</tr>');
                     });
                     
